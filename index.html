@@ -168,26 +168,68 @@ enter();
 }catch(e){$("msg").textContent=e.message;}
 }
 
+
 async function join(){
-try{
-await login();
-room=$("code").value.trim().toUpperCase();
-if(!/^[A-Z0-9]{5}$/.test(room))throw Error("請輸入五位代碼");
-let error="";
-await runTransaction(roomRef(),r=>{
-if(!r){error="房間不存在";return;}
-if(r.game){error="遊戲已開始";return;}
-r.players=r.players||{};
-if(!r.players[uid]&&Object.keys(r.players).length>=4){
-error="房間已滿";return;
+  try{
+    await login();
+
+    room=$("code").value.trim().toUpperCase();
+
+    if(!/^[A-Z0-9]{5}$/.test(room)){
+      throw Error("請輸入五位房間代碼");
+    }
+
+    // 先直接讀取房間，確認它是否存在
+    const snapshot=await get(roomRef());
+
+    if(!snapshot.exists()){
+      throw Error("找不到房間，請確認代碼是否正確");
+    }
+
+    if(snapshot.val().game){
+      throw Error("遊戲已經開始");
+    }
+
+    // 再加入房間
+    const result=await runTransaction(roomRef(),r=>{
+      if(!r || r.game) return;
+
+      r.players=r.players||{};
+
+      if(!r.players[uid] && Object.keys(r.players).length>=4){
+        return;
+      }
+
+      r.players[uid]={name:name()};
+      return r;
+    });
+
+    if(!result.committed){
+      const latest=await get(roomRef());
+
+      if(!latest.exists()){
+        throw Error("房間已不存在");
+      }
+
+      if(latest.val().game){
+        throw Error("遊戲已經開始");
+      }
+
+      if(Object.keys(latest.val().players||{}).length>=4){
+        throw Error("房間已滿");
+      }
+
+      throw Error("加入失敗，請再試一次");
+    }
+
+    enter();
+
+  }catch(e){
+    $("msg").textContent="加入失敗："+e.message;
+    console.error("UNO 加入房間錯誤：",e);
+  }
 }
-r.players[uid]={name:name()};
-return r;
-});
-if(error)throw Error(error);
-enter();
-}catch(e){$("msg").textContent=e.message;}
-}
+
 
 function enter(){
 $("lobby").classList.add("hidden");
