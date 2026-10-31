@@ -169,6 +169,177 @@ enter();
 }
 
 
+
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>UNO 好友連線派對</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#172235;color:white;font-family:Arial,"Noto Sans TC",sans-serif}
+header{text-align:center;padding:20px;background:#101722;font-size:26px;font-weight:bold}
+header span{background:#e73535;padding:5px 12px;border-radius:8px}
+main{max-width:850px;margin:auto;padding:18px}
+.panel{background:#ffffff12;border:1px solid #ffffff30;border-radius:18px;padding:20px;margin-bottom:16px}
+input{width:100%;padding:13px;margin:8px 0;border-radius:10px;border:0;font-size:16px}
+button{border:0;border-radius:10px;padding:13px 17px;font-weight:bold;font-size:15px;cursor:pointer;margin:4px}
+.primary{background:#ffd83d;color:#222}
+.secondary{background:#e8edf5;color:#222}
+.hidden{display:none!important}
+.players{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.player{background:#ffffff20;padding:12px;border-radius:12px;text-align:center}
+.active{outline:3px solid #ffdf40}
+.table{background:#087346;border:7px solid #96613b;border-radius:50px;min-height:180px;display:flex;align-items:center;justify-content:center;gap:30px;margin:15px 0}
+.card{width:65px;height:95px;border:4px solid white;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:25px;font-weight:bold;box-shadow:0 3px 8px #0008;cursor:pointer;color:white;flex-shrink:0}
+.red{background:#e73535}.blue{background:#2878e8}.green{background:#20a765}.yellow{background:#f4c62f;color:#222}
+.wild{background:conic-gradient(#e73535 0 25%,#2878e8 0 50%,#f4c62f 0 75%,#20a765 0)}
+.hand{display:flex;overflow-x:auto;gap:7px;padding:12px 0}
+.hand .card{width:56px;height:84px;font-size:20px}
+.status{text-align:center;background:#101722;padding:14px;border-radius:12px}
+#msg{color:#ffe36b;min-height:25px}
+@media(max-width:550px){.players{grid-template-columns:repeat(2,1fr)}main{padding:10px}.card{width:55px;height:82px}}
+</style>
+</head>
+<body>
+<header><span>UNO</span> 好友連線派對</header>
+<main>
+<section id="lobby" class="panel">
+<h2>一起玩 UNO！</h2>
+<input id="name" placeholder="輸入你的暱稱" maxlength="12">
+<button class="primary" id="create">建立房間</button>
+<hr>
+<input id="code" placeholder="輸入五位房間代碼" maxlength="5">
+<button class="secondary" id="join">加入房間</button>
+<p id="msg"></p>
+</section>
+
+<section id="waiting" class="panel hidden">
+<h2>等待玩家加入</h2>
+<h1 id="roomCode"></h1>
+<div id="waitingPlayers" class="players"></div>
+<p id="waitMsg"></p>
+<button class="primary" id="start" disabled>開始遊戲</button>
+<button id="leave">離開房間</button>
+</section>
+
+<section id="game" class="hidden">
+<div class="panel">
+房間：<b id="gameCode"></b>
+<p id="turn"></p>
+<div id="players" class="players"></div>
+</div>
+<div class="table">
+<div>
+<div class="card blue">UNO</div>
+<small>牌庫</small>
+</div>
+<div>
+<div id="topCard" class="card red">?</div>
+<small>目前牌</small>
+</div>
+</div>
+<div class="panel">
+<h3>你的手牌</h3>
+<div id="hand" class="hand"></div>
+<div id="status" class="status"></div>
+<button class="primary" id="draw">摸一張</button>
+<button class="secondary" id="uno">喊 UNO！</button>
+<p id="gameMsg"></p>
+</div>
+</section>
+</main>
+
+<div id="colorBox" class="panel hidden" style="position:fixed;top:35%;left:5%;width:90%;background:#172235;text-align:center">
+<h3>選擇顏色</h3>
+<button class="red" data-color="red">紅</button>
+<button class="blue" data-color="blue">藍</button>
+<button class="green" data-color="green">綠</button>
+<button class="yellow" data-color="yellow">黃</button>
+</div>
+
+<script type="module">
+import {initializeApp} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+import {getAuth,signInAnonymously} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+import {getDatabase,ref,get,set,onValue,runTransaction} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-database.js";
+
+const config={
+apiKey:"AIzaSyDo6pTESO366fRTUfpdjF_afGox-ywo-tM",
+authDomain:"uno-game-5a743.firebaseapp.com",
+databaseURL:"https://uno-game-5a743-default-rtdb.asia-southeast1.firebasedatabase.app",
+projectId:"uno-game-5a743",
+storageBucket:"uno-game-5a743.firebasestorage.app",
+messagingSenderId:"573981894102",
+appId:"1:573981894102:web:bfdde59040daa88cdf7077"
+};
+
+const app=initializeApp(config);
+const auth=getAuth(app);
+const db=getDatabase(app);
+const $=id=>document.getElementById(id);
+let uid="",room="",data=null,stop=null,pending=null;
+
+const colors=["red","blue","green","yellow"];
+const roomRef=()=>ref(db,"rooms/"+room);
+const name=()=>($("name").value.trim()||"玩家").slice(0,12);
+
+async function login(){
+if(!auth.currentUser){
+const c=await signInAnonymously(auth);
+uid=c.user.uid;
+}else uid=auth.currentUser.uid;
+}
+
+function deckMake(){
+let d=[];
+for(let c of colors){
+d.push({id:c+"0",color:c,value:"0"});
+for(let n=1;n<=9;n++)for(let k=0;k<2;k++)
+d.push({id:c+n+k,color:c,value:String(n)});
+for(let v of ["skip","reverse","+2"])for(let k=0;k<2;k++)
+d.push({id:c+v+k,color:c,value:v});
+}
+for(let k=0;k<4;k++){
+d.push({id:"w"+k,color:"wild",value:"wild"});
+d.push({id:"f"+k,color:"wild",value:"+4"});
+}
+return d.sort(()=>Math.random()-.5);
+}
+
+function label(v){
+return ({skip:"跳過",reverse:"反轉",wild:"變色","+2":"+2","+4":"+4"})[v]||v;
+}
+
+function next(g,n=1){
+g.index=(g.index+g.direction*n+g.order.length*10)%g.order.length;
+}
+
+function drawCards(g,id,n){
+for(let i=0;i<n;i++){
+if(!g.deck.length){
+let top=g.discard.pop();
+g.deck=g.discard.sort(()=>Math.random()-.5);
+g.discard=[top];
+}
+if(g.deck.length)g.hands[id].push(g.deck.pop());
+}
+}
+
+async function create(){
+try{
+await login();
+room=Math.random().toString(36).slice(2,7).toUpperCase();
+await set(roomRef(),{
+host:uid,
+players:{[uid]:{name:name()}},
+game:null
+});
+enter();
+}catch(e){$("msg").textContent=e.message;}
+}
+
+
 async function join(){
   try{
     await login();
@@ -230,6 +401,196 @@ async function join(){
   }
 }
 
+
+function enter(){
+$("lobby").classList.add("hidden");
+$("waiting").classList.remove("hidden");
+$("roomCode").textContent=room;
+$("gameCode").textContent=room;
+if(stop)stop();
+stop=onValue(roomRef(),s=>{
+data=s.val();
+if(!data)return;
+if(data.game){
+$("waiting").classList.add("hidden");
+$("game").classList.remove("hidden");
+render();
+}else renderWaiting();
+});
+}
+
+function renderWaiting(){
+let box=$("waitingPlayers");
+box.innerHTML="";
+let ids=Object.keys(data.players||{});
+ids.forEach(id=>{
+let p=document.createElement("div");
+p.className="player";
+p.textContent=data.players[id].name+(id===data.host?" 👑":"");
+box.append(p);
+});
+$("waitMsg").textContent=ids.length+" / 4 人";
+$("start").disabled=uid!==data.host||ids.length<2;
+}
+
+async function start(){
+await runTransaction(roomRef(),r=>{
+if(!r||r.host!==uid||r.game||Object.keys(r.players).length<2)return;
+let order=Object.keys(r.players);
+let deck=deckMake();
+let hands={};
+order.forEach(id=>hands[id]=deck.splice(0,7));
+let first=deck.pop();
+while(first.color==="wild"){deck.unshift(first);first=deck.pop();}
+r.game={
+order,hands,deck,discard:[first],
+index:0,direction:1,color:first.color,
+winner:null,uno:{},last:"遊戲開始！"
+};
+return r;
+});
+}
+
+function render(){
+let g=data.game;
+let current=g.order[g.index];
+$("turn").textContent="輪到："+data.players[current].name;
+let players=$("players");
+players.innerHTML="";
+g.order.forEach(id=>{
+let p=document.createElement("div");
+p.className="player"+(id===current?" active":"");
+p.textContent=data.players[id].name+"："+g.hands[id].length+" 張";
+players.append(p);
+});
+let top=g.discard[g.discard.length-1];
+$("topCard").className="card "+(top.color==="wild"?"wild":top.color);
+$("topCard").textContent=label(top.value);
+$("hand").innerHTML="";
+(g.hands[uid]||[]).forEach(c=>{
+let el=document.createElement("div");
+el.className="card "+(c.color==="wild"?"wild":c.color);
+el.textContent=label(c.value);
+el.onclick=()=>play(c.id);
+$("hand").append(el);
+});
+let mine=current===uid&&!g.winner;
+$("status").textContent=g.winner?
+data.players[g.winner].name+" 獲勝！":
+mine?"輪到你了！":"等待其他玩家出牌";
+$("draw").disabled=!mine;
+$("uno").disabled=(g.hands[uid]||[]).length!==1||!!g.winner;
+$("gameMsg").textContent=g.last||"";
+}
+
+async function play(id){
+let g=data.game;
+if(!g||g.order[g.index]!==uid||g.winner)return;
+let c=g.hands[uid].find(x=>x.id===id);
+if(!c)return;
+let top=g.discard[g.discard.length-1];
+if(c.color!=="wild"&&c.color!==g.color&&c.value!==top.value){
+$("gameMsg").textContent="顏色或數字必須符合！";
+return;
+}
+if(c.color==="wild"){
+pending=c;
+$("colorBox").classList.remove("hidden");
+return;
+}
+await commit(c,null);
+}
+
+async function commit(card,color){
+await runTransaction(roomRef(),r=>{
+let g=r?.game;
+if(!g||g.order[g.index]!==uid||g.winner)return;
+let h=g.hands[uid];
+let i=h.findIndex(c=>c.id===card.id);
+if(i<0)return;
+let top=g.discard[g.discard.length-1];
+if(card.color!=="wild"&&card.color!==g.color&&card.value!==top.value)return;
+h.splice(i,1);
+g.discard.push(card);
+g.color=color||card.color;
+g.uno[uid]=false;
+if(!h.length){
+g.winner=uid;
+g.last=r.players[uid].name+" 獲勝！";
+return r;
+}
+let steps=1;
+if(card.value==="reverse"){
+g.direction*=-1;
+if(g.order.length===2)steps=2;
+}
+if(card.value==="skip")steps=2;
+if(card.value==="+2"||card.value==="+4"){
+let target=g.order[(g.index+g.direction+g.order.length)%g.order.length];
+drawCards(g,target,card.value==="+2"?2:4);
+steps=2;
+}
+next(g,steps);
+g.last=r.players[uid].name+" 出了 "+label(card.value);
+return r;
+});
+}
+
+$("create").onclick=create;
+$("join").onclick=join;
+$("start").onclick=start;
+
+$("draw").onclick=async()=>{
+await runTransaction(roomRef(),r=>{
+let g=r?.game;
+if(!g||g.winner||g.order[g.index]!==uid)return;
+drawCards(g,uid,1);
+next(g);
+g.last=r.players[uid].name+" 摸了一張牌";
+return r;
+});
+};
+
+$("uno").onclick=async()=>{
+await runTransaction(roomRef(),r=>{
+let g=r?.game;
+if(!g||g.winner||g.hands[uid]?.length!==1)return;
+g.uno[uid]=true;
+g.last=r.players[uid].name+" 喊 UNO！";
+return r;
+});
+};
+
+$("colorBox").querySelectorAll("button").forEach(b=>{
+b.onclick=async()=>{
+let color=b.dataset.color;
+$("colorBox").classList.add("hidden");
+if(pending)await commit(pending,color);
+pending=null;
+};
+});
+
+$("leave").onclick=leave;
+async function leave(){
+if(room&&uid){
+await runTransaction(roomRef(),r=>{
+if(!r||r.game)return r;
+delete r.players[uid];
+let ids=Object.keys(r.players||{});
+if(!ids.length)return null;
+if(r.host===uid)r.host=ids[0];
+return r;
+});
+}
+if(stop)stop();
+$("waiting").classList.add("hidden");
+$("game").classList.add("hidden");
+$("lobby").classList.remove("hidden");
+room="";
+}
+</script>
+</body>
+</html>
 
 function enter(){
 $("lobby").classList.add("hidden");
