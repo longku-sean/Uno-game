@@ -14,7 +14,7 @@ main{max-width:850px;margin:auto;padding:18px}
 .panel{background:#ffffff12;border:1px solid #ffffff30;border-radius:18px;padding:20px;margin-bottom:16px}
 input{width:100%;padding:13px;margin:8px 0;border-radius:10px;border:0;font-size:16px}
 button{border:0;border-radius:10px;padding:13px 17px;font-weight:bold;font-size:15px;cursor:pointer;margin:4px}
-button:disabled{opacity:.4;cursor:not-allowed}
+button:disabled{opacity:.4}
 .primary{background:#ffd83d;color:#222}
 .secondary{background:#e8edf5;color:#222}
 .hidden{display:none!important}
@@ -23,17 +23,26 @@ button:disabled{opacity:.4;cursor:not-allowed}
 .active{outline:3px solid #ffdf40}
 .table{background:#087346;border:7px solid #96613b;border-radius:50px;min-height:180px;display:flex;align-items:center;justify-content:center;gap:30px;margin:15px 0}
 .card{width:65px;height:95px;border:4px solid white;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:25px;font-weight:bold;box-shadow:0 3px 8px #0008;cursor:pointer;color:white;flex-shrink:0}
-.red{background:#e73535}.blue{background:#2878e8}.green{background:#20a765}.yellow{background:#f4c62f;color:#222}
+.red{background:#e73535}
+.blue{background:#2878e8}
+.green{background:#20a765}
+.yellow{background:#f4c62f;color:#222}
 .wild{background:conic-gradient(#e73535 0 25%,#2878e8 0 50%,#f4c62f 0 75%,#20a765 0)}
 .hand{display:flex;overflow-x:auto;gap:7px;padding:12px 0}
 .hand .card{width:56px;height:84px;font-size:20px}
 .status{text-align:center;background:#101722;padding:14px;border-radius:12px}
 #msg{color:#ffe36b;min-height:25px;white-space:pre-wrap}
-@media(max-width:550px){.players{grid-template-columns:repeat(2,1fr)}main{padding:10px}.card{width:55px;height:82px}}
+@media(max-width:550px){
+.players{grid-template-columns:repeat(2,1fr)}
+main{padding:10px}
+.card{width:55px;height:82px}
+}
 </style>
 </head>
 <body>
+
 <header><span>UNO</span> 好友連線派對</header>
+
 <main>
 <section id="lobby" class="panel">
 <h2>一起玩 UNO！</h2>
@@ -60,10 +69,18 @@ button:disabled{opacity:.4;cursor:not-allowed}
 <p id="turn"></p>
 <div id="players" class="players"></div>
 </div>
+
 <div class="table">
-<div><div class="card blue">UNO</div><small>牌庫</small></div>
-<div><div id="topCard" class="card red">?</div><small>目前牌</small></div>
+<div>
+<div class="card blue">UNO</div>
+<small>牌庫</small>
 </div>
+<div>
+<div id="topCard" class="card red">?</div>
+<small>目前牌</small>
+</div>
+</div>
+
 <div class="panel">
 <h3>你的手牌</h3>
 <div id="hand" class="hand"></div>
@@ -84,12 +101,8 @@ button:disabled{opacity:.4;cursor:not-allowed}
 </div>
 
 <script type="module">
-import {initializeApp}
-from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
-
-import {getAuth,signInAnonymously}
-from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
-
+import {initializeApp} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+import {getAuth,signInAnonymously} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 import {
 getDatabase,ref,get,set,onValue,runTransaction
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-database.js";
@@ -128,9 +141,9 @@ uid=auth.currentUser.uid;
 }
 }
 
-function showError(error){
-console.error(error);
-$("msg").textContent="錯誤："+(error?.message||String(error));
+function showError(e){
+console.error(e);
+$("msg").textContent="錯誤："+(e.code?e.code+"：":"")+(e.message||e);
 }
 
 function deckMake(){
@@ -181,13 +194,15 @@ $("msg").textContent="正在建立房間...";
 await login();
 
 let newRoom="";
-for(let i=0;i<10;i++){
-newRoom=Math.random().toString(36).slice(2,7).toUpperCase();
-const existing=await get(ref(db,"rooms/"+newRoom));
-if(!existing.exists())break;
-newRoom="";
+for(let i=0;i<12;i++){
+const candidate=Math.random().toString(36).slice(2,7).toUpperCase();
+const existing=await get(ref(db,"rooms/"+candidate));
+if(!existing.exists()){
+newRoom=candidate;
+break;
 }
-if(!newRoom)throw Error("暫時無法產生房間代碼");
+}
+if(!newRoom)throw Error("無法產生房間代碼");
 
 room=newRoom;
 
@@ -211,6 +226,7 @@ $("msg").textContent="正在加入房間...";
 await login();
 
 const code=$("code").value.trim().toUpperCase();
+
 if(!/^[A-Z0-9]{5}$/.test(code)){
 throw Error("請輸入五位房間代碼");
 }
@@ -235,12 +251,10 @@ if(!players[uid]&&Object.keys(players).length>=4){
 throw Error("房間已滿");
 }
 
-// 寫入目前玩家的資料
 await set(ref(db,"rooms/"+room+"/players/"+uid),{
 name:playerName()
 });
 
-// 確認資料真的寫入
 const check=await get(ref(db,"rooms/"+room+"/players/"+uid));
 
 if(!check.exists()){
@@ -277,9 +291,7 @@ render();
 }else{
 renderWaiting();
 }
-},error=>{
-showError(error);
-});
+},error=>showError(error));
 }
 
 function renderWaiting(){
@@ -311,22 +323,19 @@ const hands={};
 order.forEach(id=>hands[id]=deck.splice(0,7));
 
 let first=deck.pop();
+
 while(first.color==="wild"){
 deck.unshift(first);
 first=deck.pop();
 }
 
+const uno={};
+order.forEach(id=>uno[id]=false);
+
 r.game={
-order,
-hands,
-deck,
-discard:[first],
-index:0,
-direction:1,
-color:first.color,
-winner:null,
-uno:{},
-last:"遊戲開始！"
+order,hands,deck,discard:[first],
+index:0,direction:1,color:first.color,
+winner:null,uno,last:"遊戲開始！"
 };
 
 return r;
@@ -355,6 +364,7 @@ players.append(p);
 });
 
 const top=g.discard[g.discard.length-1];
+
 $("topCard").className="card "+(top.color==="wild"?"wild":top.color);
 $("topCard").textContent=label(top.value);
 
@@ -381,6 +391,7 @@ $("gameMsg").textContent=g.last||"";
 
 async function play(id){
 const g=data?.game;
+
 if(!g||g.order[g.index]!==uid||g.winner)return;
 
 const c=g.hands[uid].find(x=>x.id===id);
@@ -409,7 +420,7 @@ const g=r?.game;
 
 if(!g||g.order[g.index]!==uid||g.winner)return;
 
-const h=g.hands[uid];
+const h=g.hands?.[uid];
 if(!h)return;
 
 const i=h.findIndex(c=>c.id===card.id);
@@ -419,6 +430,15 @@ const top=g.discard[g.discard.length-1];
 
 if(card.color!=="wild"&&card.color!==g.color&&card.value!==top.value)return;
 
+// 修正 UNO 狀態初始化
+g.uno=g.uno||{};
+
+for(const playerId of g.order){
+if(typeof g.uno[playerId]!=="boolean"){
+g.uno[playerId]=false;
+}
+}
+
 h.splice(i,1);
 g.discard.push(card);
 g.color=color||card.color;
@@ -426,7 +446,7 @@ g.uno[uid]=false;
 
 if(!h.length){
 g.winner=uid;
-g.last=r.players[uid].name+" 獲勝！";
+g.last=(r.players[uid]?.name||"玩家")+" 獲勝！";
 return r;
 }
 
@@ -446,11 +466,14 @@ steps=2;
 }
 
 next(g,steps);
-g.last=r.players[uid].name+" 出了 "+label(card.value);
+
+g.last=(r.players[uid]?.name||"玩家")+" 出了 "+label(card.value);
+
 return r;
 });
 }catch(e){
-$("gameMsg").textContent="出牌失敗："+e.message;
+$("gameMsg").textContent="出牌失敗："+(e.code?e.code+"：":"")+(e.message||e);
+console.error(e);
 }
 }
 
@@ -462,11 +485,13 @@ $("draw").onclick=async()=>{
 try{
 await runTransaction(roomRef(),r=>{
 const g=r?.game;
+
 if(!g||g.winner||g.order[g.index]!==uid)return;
 
 drawCards(g,uid,1);
 next(g);
-g.last=r.players[uid].name+" 摸了一張牌";
+g.last=(r.players[uid]?.name||"玩家")+" 摸了一張牌";
+
 return r;
 });
 }catch(e){
@@ -478,10 +503,14 @@ $("uno").onclick=async()=>{
 try{
 await runTransaction(roomRef(),r=>{
 const g=r?.game;
+
 if(!g||g.winner||g.hands[uid]?.length!==1)return;
 
+g.uno=g.uno||{};
 g.uno[uid]=true;
-g.last=r.players[uid].name+" 喊 UNO！";
+
+g.last=(r.players[uid]?.name||"玩家")+" 喊 UNO！";
+
 return r;
 });
 }catch(e){
@@ -492,16 +521,16 @@ $("gameMsg").textContent="喊 UNO 失敗："+e.message;
 $("colorBox").querySelectorAll("button").forEach(b=>{
 b.onclick=async()=>{
 const color=b.dataset.color;
+
 $("colorBox").classList.add("hidden");
 
 if(pending)await commit(pending,color);
+
 pending=null;
 };
 });
 
-$("leave").onclick=leave;
-
-async function leave(){
+$("leave").onclick=async()=>{
 try{
 if(room&&uid){
 await runTransaction(roomRef(),r=>{
@@ -524,12 +553,14 @@ if(stop)stop();
 $("waiting").classList.add("hidden");
 $("game").classList.add("hidden");
 $("lobby").classList.remove("hidden");
+
 $("msg").textContent="";
 room="";
+
 }catch(e){
 showError(e);
 }
-}
+};
 </script>
 </body>
 </html>
